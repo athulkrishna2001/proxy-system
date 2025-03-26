@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  offshore-proxy:
+    build:
+      context: ./offshore-proxy
+      dockerfile: Dockerfile
+    image: offshore-proxy
+    container_name: offshore-proxy
+    ports:
+      - "9090:9090"
+    networks:
+      - proxy-network
+
+  ship-proxy:
+    build:
+      context: ./ship-proxy
+      dockerfile: Dockerfile
+    image: ship-proxy
+    container_name: ship-proxy
+    ports:
+      - "8080:8080"
+    depends_on:
+      - offshore-proxy
+    networks:
+      - proxy-network
+
+networks:
+  proxy-network:
+    driver: bridge
