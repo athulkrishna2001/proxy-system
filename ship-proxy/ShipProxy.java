@@ -26,33 +26,59 @@ public class ShipProxy {
     }
 
     private static void handleClient(Socket clientSocket) {
-        try (clientSocket;
-             Socket offshoreSocket = new Socket(OFFSHORE_PROXY_HOST, OFFSHORE_PROXY_PORT)) {
-
+        try {
             logger.info("Connection accepted from " + clientSocket.getInetAddress());
 
-            // Forward request to offshore proxy
-            forwardData(clientSocket.getInputStream(), offshoreSocket.getOutputStream());
-            offshoreSocket.getOutputStream().flush();
+            // Create a new connection to the offshore proxy for each request
+            try (Socket offshoreSocket = new Socket(OFFSHORE_PROXY_HOST, OFFSHORE_PROXY_PORT)) {
 
-            // Forward response back to the client
-            forwardData(offshoreSocket.getInputStream(), clientSocket.getOutputStream());
-            clientSocket.getOutputStream().flush();
+                // Forward request to offshore proxy
+                forwardData(clientSocket.getInputStream(), offshoreSocket.getOutputStream());
+                offshoreSocket.getOutputStream().flush();
 
-            logger.info("Request processed successfully.");
+                // Forward response back to the client
+                forwardData(offshoreSocket.getInputStream(), clientSocket.getOutputStream());
+                clientSocket.getOutputStream().flush();
+
+                logger.info("Request processed successfully.");
+            }
         } catch (IOException e) {
-            try {
-                clientSocket.getOutputStream().write("HTTP/1.1 502 Bad Gateway\r\n\r\n".getBytes());
-            } catch (IOException ignored) { }
+            sendErrorResponse(clientSocket);
             logger.log(Level.SEVERE, "Error handling client connection: " + e.getMessage(), e);
+        } finally {
+            closeSocket(clientSocket);
         }
     }
 
-    private static void forwardData(InputStream input, OutputStream output) throws IOException {
-        byte[] buffer = new byte[4096];
-        int bytesRead;
-        while ((bytesRead = input.read(buffer)) != -1) {
-            output.write(buffer, 0, bytesRead);
+    private static void forwardData(InputStream input, OutputStream output) {
+        try {
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = input.read(buffer)) != -1) {
+                output.write(buffer, 0, bytesRead);
+            }
+            output.flush();
+        } catch (IOException e) {
+            logger.log(Level.WARNING, "Data forwarding error: " + e.getMessage(), e);
+        }
+    }
+
+    private static void sendErrorResponse(Socket clientSocket) {
+        try {
+            if (clientSocket != null && !clientSocket.isClosed()) {
+                clientSocket.getOutputStream().write("HTTP/1.1 502 Bad Gateway\r\n\r\n".getBytes());
+                clientSocket.getOutputStream().flush();
+            }
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static void closeSocket(Socket socket) {
+        if (socket != null) {
+            try {
+                socket.close();
+            } catch (IOException ignored) {
+            }
         }
     }
 
